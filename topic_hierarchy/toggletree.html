@@ -1,0 +1,1350 @@
+<!--
+ * Author : Mandar Darwatkar
+ * This project provides a robust, intuitive way to 
+ * visualize topic hierarchy. The project also aims 
+ * at itegrating various meaningful metrics associated 
+ * with topics e.g. Number of unique contacts contacts 
+ * scored in a topic, Number of interactions associated 
+ * with a topic, etc.
+ * This presents potential future work to tie topic
+ * accounts and contacts, show actual interactions, etc.
+ * 
+-->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+</style>
+    <script src="js/d3.js" type="text/javascript"></script>
+    <script src="js/jquery-2.1.4.min.js" type="text/javascript"></script>
+    <link href='css/toggletree.css' rel='stylesheet' type='text/css'>
+
+    <title>Topic Map</title>
+</head>
+
+<body>
+    <div class="header-pane">
+        <input class="form-control keyword-filter" id="keyword-filter"
+        onchange="getSearchKey(this.value, this.id)" onkeyup=
+        "getSearchKey(this.value, this.id)" placeholder=
+        "Search Topics/Keywords/Topic ID" type="text">
+
+        <div class="expandcollapsepane">
+            <a id="expandlevel" onclick="expandLevel()" title=
+            "Click to expand next level">Expand Level</a> <a id="collapselevel"
+            onclick="collapseLevel()" title=
+            "Click to collapse one level">Collapse Level</a> <a id=
+            "collapseAll" onclick="collapseAll()" title=
+            "Click to collapse all">Reset Graph</a>
+			<a id="help">Help</a>
+        </div>
+
+        <div id="metric-time-span">
+            Time Range: <span id="time-range-value">14 Days</span> <input id=
+            "slider" max="4" min="0" onchange="changeMetric(this.value)" step=
+            "1" type="range" value="0">
+        </div>
+    </div>
+	
+	<script type="text/javascript">
+	
+	var width = screen.width - 30,
+		height = screen.height - 200,
+		root;
+	var heatMaxSize = 0;
+	var nodearr = [];	//This stores the input hierarchy
+	var node_selection = [];	//This stores the matching nodes that should be highlighted
+	var nodes_to_expand = [];	/* This stores the parent nodes that should be /
+								 * expanded when lower level nodes match
+								 */
+	var globalNode = "",
+		globalKeywordArray = {},	//This stores keywords associated with selected node/topic
+		globalMetricArray = {};		//This stores metrics associated with selected node/topic
+	
+	var globalNodeSelection = false, globalnodetoggled = false, expandflag = false;
+	
+	/*
+	 * force stores the complete layout
+	 * 		charge controls the repulsion between nodes
+	 *		gravity controls stability/movement
+	 */
+	var force = d3.layout.force().charge(-1500).linkDistance(70).gravity(0.3).size(
+		[width, height]);//.on("tick", tick); 
+	
+	// zoom event for force-directed and collapsible
+	var zoom = d3.behavior.zoom().scaleExtent([0.2, 4]).on("zoom", redraw);
+	var svg = d3.select("body").append("svg").attr("id", "graph").attr("width",
+		width).attr("height", height).attr("border", 1).on("click",
+		mouseout).on("dblclick.zoom", null).call(zoom);
+	var container = svg.append("g");
+	var link = container.selectAll(".link"),
+		node = container.selectAll(".node");
+	var global = Array(); // this catches some things that need to be available globally
+	global["mouseDownOnNode"] = false;
+	globaliteration = 0;
+
+	/*
+	 * Load the data as JSON and push it into global array
+	 * Onload : * display only level 1 nodes
+	 * 			* keyword-inner-pane is hidden
+	 *			* Time Range selector is hidden
+	 *			* Metrics panel is hidden
+	 */
+	d3.json("input/shikhar.json", function(error, json) {
+	
+		if (error) return console.warn(error);
+		root = json;
+		nodearr.push(root);
+		pushArray(root);
+		// Sort the data array so that array index represents the dummy graph topic ID
+		nodearr.sort(compare);
+		
+		/* Generate a word list from keywords
+		 *		Every keyword is split over whitespaces /
+		 *		to increase the performance of word pattern matching
+		 */
+		genWordList();
+		nodearr[0].globalexpand = true;
+		/* Update the layout before hidding levels below level 1.
+		 * This computes approximate positions of nodes.
+		 * It helps to minimize the graph movement when expanded first time.
+		 */
+		update();
+		for (var i = 1; i < nodearr.length; i++) {
+
+			heatMaxSize = heatMaxSize > nodearr[i].level ? heatMaxSize :
+				nodearr[i].level;
+			if (nodearr[i].children) {
+				nodearr[i]._children = nodearr[i].children;
+				nodearr[i].children = null;
+				nodearr[i].globalexpand = false;
+			}
+			nodearr[i].selected = false;
+			// expandlevel attribute stores the level expanded in corresponding subtree
+			nodearr[i].expandlevel = 0;
+		}
+		// update to hide level below level 1
+		update();
+	});
+	
+	/*
+	 * Trigger default visual settings when document loads
+	 */
+	$(document).ready(function() {
+		$("#topic-filter").val("");
+		$("#keyword-filter").val("");
+		$("#myonoffswitch").prop("checked", true);
+		$('#metric-time-span option[value="0"]').prop('selected', true);
+		$('input[name=metric-filter]').prop('checked', false);
+	});
+	
+	/*
+	 * update the tree layout
+	 */
+	function update() {
+			// root stores the entire hierarchy
+			var nodes = flatten(root),
+				links = d3.layout.tree().links(nodes);
+			// Restart the force layout.
+			force.nodes(nodes).links(links).on('start',start).start();
+			// Update links.
+			link = link.data(links, function(d) {
+				return d.target.id;
+			});
+			link.exit().remove();
+			// Control the link styling between root node to first level and rest
+			link.enter().insert("polygon", ".node").attr("class", "link").style(
+				"opacity", function(d) {
+					return d.source.id == 0 ? 0.7 : 0.7
+				});
+			// Update nodes.
+			node = node.data(nodes, function(d) {
+				return d.id;
+			});
+			node.exit().remove();
+			/*
+			 * Declare the event actions
+			 * 		onclick 		- expand/collapse subtree rooted at this node
+			 * 		onmouseover 	- highlight the node
+			 */
+			var nodeEnter = node.enter().append("g")
+					.attr("class", "node").on( "click", function(d) {
+						if (d.id != 0) toggleCollapse(d) })
+					.on("mouseover", function(d) {
+						if (d.id != 0) toggleNodeSelection(d) })
+					.on("mousedown", function(d) {
+						global["mouseDownOnNode"] = true; })
+					.on("mouseup", function(d) {
+						global["mouseDownOnNode"] = false; })
+					.call(force.drag)
+					.sort(function(a, b) {
+					if (a.id != 0 || a.selected == true) return 1;
+					else return -1;
+				});
+				/*
+						d3.selectAll(".node").sort(function(a, b) {
+		console.log(a);
+			if (nameSet.has(a.name.trim().toLowerCase()) || parentSet.has(a.id) ) {
+		console.log("here");
+			return 1; }
+			else return -1;
+		});*/
+		d3.selectAll("polygon.link").sort(function(a, b) {
+	
+			if (a.target.selected == true ) return 1;
+			else return -1;
+		});
+		
+			/*
+			 * Set node styling
+			 * 		Node size decrease from root to leaf nodes with maximum at 12 and minimum at 4.5
+			 */
+			nodeEnter.append("circle").attr("r", function(d) {
+				return d.r = 12 - (d.level * 2) || 4.5;
+			});
+
+			/* 
+			 * Set node colors
+			 * 		Node colors are generated using a heatmap taking node level as parameter
+			 *		Root node has edge color
+			 *		Change opacity to 0 to hide
+			 */
+			node.select("circle").style("opacity", function(d) {
+				return d.id == 0 ? 1 : 1
+			}).style("fill", function(d) {
+				return d.id == 0 ? "#C9C9C9" : colorHeatMax(d);
+			}).style("stroke", function(d) {
+				return d.id == 0 ? "#C9C9C9" : colorHeatMax(d);
+			});
+			
+			// Update node label
+			var txt = nodeEnter.append("text")
+				.text(function(d) { return d.name; 	})
+				.style("text-shadow", "0px 0px 2px #FFFFFF");
+			
+		}
+		
+		/*
+		 * Update the node selection
+		 * 		if mouseover node, then highlight the node, display metrics, description and keywords
+		 * 		Remove highlight from other nodes
+		 *		function called on click outside node to remove any selections(reset graph functionality)
+		 */
+
+	function toggleNodeSelection(d) {
+			if (!jQuery.isEmptyObject(d3.event))
+				if (d3.event.defaultPrevented) return;
+			globalNode = "";
+			globalKeywordArray = {};
+			globalMetricArray = {};
+
+			for (var i = 1; i < nodearr.length; i++) {
+				nodearr[i].selected = false;
+			}
+			$('#keyword-inner-pane').empty();
+			//mouseout();
+			if (!jQuery.isEmptyObject(d) && globalnodetoggled == false) {
+				globalNode = d;
+				d.selected = true;
+				mouseover(d);
+				$('#chart-pane').css("display", "block");
+				showMetrics(d);
+				showDesc(d);
+				var numlang = d.lang;
+				var keywordexists = false;
+				if (!jQuery.isEmptyObject(numlang)) {
+					for (var p = 0; p < numlang.length; p++) {
+						var lang = d.lang[p];
+						if (!jQuery.isEmptyObject(d.keywords[p][lang]))
+							keywordexists = true;
+					}
+				}
+				if (keywordexists == true) {
+					showKeywords(d);
+				} else {
+					$('#keyword-inner-pane').empty();
+					$('#keyword-inner-pane').append("<p>No keywords Found</p>");
+				}
+			}
+		}
+		
+	/*
+	 * Search duplicate nodes to match and store into nameSet
+	 * Search parent nodes in subtree that should be expanded and store into parentSet	
+	 */
+	function mouseover(d) {
+		var nameSet = new Set();
+		nameSet.add(d.name.toLowerCase());
+		node_selection = [];
+		nodes_to_expand = [];
+		var dupcnt = findDuplicateNodes(d.id, d.name, true);
+		if(dupcnt > 0) {
+
+			globalnodetoggled = true;
+			update();
+		}
+		var parentSet = new Set(node_selection);
+
+		mouseoverNode(nameSet, parentSet);
+		mouseoverText(nameSet, parentSet);
+
+	}
+
+	/*
+	 * Remove current selections and reset the graph.
+	 * No levels expanded or collapsed
+	 */
+	function mouseout() {
+	
+		if (!jQuery.isEmptyObject(d3.event)) {
+			if (d3.event.defaultPrevented) return;
+			$('#keyword-inner-pane').empty();
+			$('#desc').css("display", "none");
+			$('#chart-pane').css("display", "none");
+			$('#keyword-filter').val("");
+			$('#select-lang').html('').prop('disabled', 'disabled');
+			$('#metric-time-span').css("display", "none");
+		}
+
+		var selectednodes = 0;
+		
+		for (var i = 1; i < nodearr.length; i++) {
+
+			if (nodearr[i].selected == true || globalnodetoggled == true) {
+				nodearr[i].selected = false;
+				globalnodetoggled = false;
+				++selectednodes;
+			}
+			var ind = -1;
+			if(( ind = nodes_to_expand.indexOf(nodearr[i])) != -1) {
+
+				if (nodes_to_expand[ind].children && nodes_to_expand[ind].globalexpand !=
+					true) {
+					nodes_to_expand[ind]._children = nodes_to_expand[ind].children;
+					nodes_to_expand[ind].children = null;
+					++selectednodes;
+				}
+			}
+		}
+		
+		if( selectednodes == 0 )
+			return;
+
+		update();
+		d3.selectAll("circle").style("fill", function(d) {
+				return d.id == 0 ? "#C9C9C9" : colorHeatMax(d);
+			})
+			.style("stroke", function(d) {
+				return d.id == 0 ? "#C9C9C9" : colorHeatMax(d);
+			})
+			.transition().duration(100).attr("r", function(d) {
+				return 12 - (d.level * 2) || 4.5;
+			});
+		d3.select("#graph").selectAll("text").style("fill", "#000000").style(
+			"font-size", "10px").text(function(d) {
+			return d.name;
+		});
+		d3.selectAll("polygon.link").style("stroke", "#C9C9C9").style("fill",
+			"#C9C9C9");
+	}
+
+	/*
+	 * Create array of node objects.
+	 */
+	function pushArray(root) {
+		if (root.children) {
+			for (var i = 0; i < root.children.length; i++) {
+				pushArray(root.children[i]);
+				nodearr.push(root.children[i]);
+			}
+		}
+	}
+
+	/*
+	 * Traverse tree upwards from @id to root node
+	 */
+	function traverseTree(id) {
+		if (nodearr[id].parent != "null") {
+			nodearr[id].selected = true;
+			traverseTree(nodearr[id].parent);
+			node_selection.push(nodearr[id].parent);
+			nodes_to_expand.push(nodearr[nodearr[id].parent]);
+			expand(nodearr[nodearr[id].parent]);
+			return;
+		}
+	}
+	
+	/*
+	 * Custom comparator for sorting nodes.
+	 * Sorts based on node ID.
+	 */
+	function compare(a, b) {
+		if (parseInt(a.id) < parseInt(b.id)) return -1;
+		if (parseInt(a.id) > parseInt(b.id)) return 1;
+		return 0;
+	}
+	
+	/*
+	 * Find duplicate nodes.
+	 */
+	function findDuplicateNodes(id, name, onlyDuplicates) {
+		name = name.toLowerCase().trim();
+		var dupcnt = 0;
+		for (var i = 0; i < nodearr.length; i++) {
+			if (onlyDuplicates == true) {
+				if (name == nodearr[i].name.toLowerCase()) {
+				
+					traverseTree(nodearr[i].id);
+					if(expandflag == true) {
+						expandflag = false;
+						++dupcnt;
+					}
+				}
+			} 
+		}
+		return dupcnt;
+	}
+	
+	/*
+	 * Search entire topic hierarchy to find topics:
+	 *		* with exact match to topic name
+	 *		* with exact match to topic ID
+	 * 		* with keywords containing search substring 
+	 */
+	function getSearchKey(search_key, element_id) {
+		node_selection = [];
+		nodes_to_expand = [];
+		mouseout();
+		var nameSet = new Set();	// This stores the intersection of matched topics
+		var keywordSet = new Set();	// This stores the intersections of matched keywords to be displayed in keyword panel
+		var unionMap = new Map();	// This stores union of matches resulted from multiple search substring
+		var unionexactresult = new Set();
+		if (!jQuery.isEmptyObject(search_key)) {
+			var search_key_list = search_key.trim().split(" ");
+			if (search_key.trim()) {
+				for (var i = 0; i < search_key_list.length; i++) {
+					// match in keywords
+					var resultMap = keywordExists(search_key_list[i].toLowerCase()
+						.trim());
+					if (resultMap.size != 0) {
+						for (var [key, value] of resultMap) {
+							unionMap.set(key, value);
+						}
+					} else {
+						unionMap.clear();
+					}
+					// match in topic names and IDs
+					var exactnameset = matchTopicNameId(search_key.toLowerCase()
+						.trim());
+					//if (exactnameset.size != 0) {
+						exactnameset.forEach(function(value) {
+							unionexactresult.add(value);
+						});
+					//} else {
+					//	unionexactresult.clear();
+					//}
+				}
+				var keywordresultintersect = findKeywordIntersection(
+					search_key_list, unionMap);
+				for (var [key, value] of keywordresultintersect) {
+					var strsplit = key.split("_id_");
+					nameSet.add(strsplit[0]);
+					value.forEach(function(val) {
+						keywordSet.add(val);
+					});
+					traverseTree(strsplit[1]);
+				}
+				//if (unionexactresult.size == 1) {
+					unionexactresult.forEach(function(val) {
+						nameSet.add(val);
+						for (var i = 0; i < nodearr.length; i++) {
+							if (nodearr[i].name.trim().toLowerCase() ==
+								val) {
+								traverseTree(nodearr[i].id);
+							}
+						}
+					});
+				//}
+				update();
+				var parentSet = new Set(node_selection);
+				mouseoverNode(nameSet, parentSet);
+				mouseoverText(nameSet, parentSet);
+				showSelectedKeywords(keywordSet);
+			} else {
+				toggleNodeSelection();
+			}
+		}
+	}
+	/* 
+	 * Match search strings in keywords.
+	 */
+	function keywordExists(keyword) {
+		var nodeMap = new Map();
+		for (var i = 0; i < nodearr.length; i++) {
+			var keywordSet = new Set(nodearr[i].wordList);
+			/* Search language wise
+			var numlang = nodearr[i].lang;
+			
+			if(!jQuery.isEmptyObject(numlang)) {
+				for(var p = 0; p < numlang.length; p++) {
+					var lang = nodearr[i].lang[p];
+				
+					for(var q = 0; q < nodearr[i].keywords[p][lang].length; q++) {
+						keywordSet.add(nodearr[i].keywords[p][lang][q].trim().toLowerCase());
+					}
+				}
+			}
+		*/
+			if (nodearr[i].wordList.has(keyword)) {
+				nodeMap.set(nodearr[i].name.toLowerCase().trim() + "_id_" +
+					nodearr[i].id, nodearr[i].wordList.get(keyword));
+			}
+		}
+		return nodeMap;
+	}
+	/*
+	 *	Match search strings in topic name and IDs
+	 */
+	function matchTopicNameId(keyword) {
+		
+		var nameSet = new Set();
+		for (var i = 0; i < nodearr.length; i++) {
+			var split = new Set(nodearr[i].name.trim().toLowerCase().split(" "));
+			if (split.has(keyword) || nodearr[i].actualID == keyword) {
+				nameSet.add(nodearr[i].name.toLowerCase().trim());
+				
+			}
+		}
+		return nameSet;
+	}
+
+	function findKeywordIntersection(search_key_list, unionMap) {
+		var finalKeyMap = new Map();
+		for (var i = 0; i < search_key_list.length; i++) {
+			for (var [key, value] of unionMap) {
+				value.forEach(function(val) {
+					var finalkey = val + "_name_" + key;
+					var valarr = new Set(val.split(" "));
+					if (valarr.has(search_key_list[i])) {
+						if (finalKeyMap.has(finalkey)) {
+							var cnt = finalKeyMap.get(finalkey);
+							finalKeyMap.set(finalkey, ++cnt);
+						} else {
+							finalKeyMap.set(finalkey, 1);
+						}
+					} else {
+						finalKeyMap.set(finalkey, 0);
+					}
+				});
+			}
+		}
+		var intersectMap = new Map();
+		for (var [key, value] of finalKeyMap) {
+			var keyarr = key.split("_name_");
+			var keyword = keyarr[0];
+			var node = keyarr[1];
+			if (value == search_key_list.length) {
+				var keyset = new Set();
+				if (intersectMap.has(node)) {
+					keyset = intersectMap.get(node);
+					keyset.add(keyword);
+					intersectMap.set(node, keyset);
+				} else {
+					keyset.add(keyword);
+					intersectMap.set(node, new Set(keyset));
+				}
+			}
+		}
+		return intersectMap;
+	}
+
+	function findNodes(keywordintersect) {
+		for (var i = 0; i < nodearr.length; i++) {
+			var numlang = nodearr[i].lang;
+			if (!jQuery.isEmptyObject(numlang)) {
+				for (var p = 0; p < numlang.length; p++) {
+					var lang = nodearr[i].lang[p];
+					for (var q = 0; q < nodearr[i].keywords[p][lang].length; q++) {
+						if (nodearr[i].keywords[p][lang][q].trim().toLowerCase())
+						;
+					}
+				}
+			}
+		}
+	}
+
+	function mouseoverNode(nameSet, parentSet) {
+		d3.selectAll("circle").each(function(d) {
+			var element = d3.select(this);
+			if (nameSet.has(d.name.toLowerCase())) {
+				d.selected = true;
+				element.style("fill", "#FF6600").style("stroke",
+					"#FF6600").transition().duration(100).style(
+					"opacity", 1).attr("r", function(d) {
+					return 12 - d.level || 4.5 * 2;
+				});
+
+				d3.selectAll("polygon.link").style("stroke", function(d) {
+			
+					if (parentSet.has(d.target.id) || nameSet.has(d.target.name.trim().toLowerCase())) { 
+						return "#FF8533";			
+					} else { 	return "#DFDFDF";		}		
+				}).style("fill", function(d) {
+					if (parentSet.has(d.target.id) || nameSet.has(d.target.name.trim().toLowerCase())) { 
+						return "#FF8533";			
+					} else { 	return "#DFDFDF";		}		
+				}).sort(function(a, b) {
+
+			if (a.target.selected == true ) return 1;
+			else return -1;
+		});
+				
+			/*	d3.selectAll("polygon.link").sort(function(a, b) {
+		console.log(a.target.selected);
+			if (a.target.selected == true ) { console.log("here");
+			return 1;}
+			else return -1;
+		});*/
+				
+				
+			} else if (parentSet.has(d.id)) {
+				element.style("fill", function(d) {
+					return colorHeatMax(d);
+				}).style("stroke", function(d) {
+					return colorHeatMax(d);
+				});
+			} else {
+				element.style("fill", function(d) {
+					return d.id == 0 ? "#E6A071" : "#BCBCBC"
+				}).style("stroke", function(d) {
+					return d.id == 0 ? "#E6A071" : "#BCBCBC"
+				});
+			}
+		});
+
+	}
+
+	function mouseoverText(nameSet, parentSet) {
+	//nameSet.forEach(function(v) {console.log(v);});
+		d3.select("#graph").selectAll("text").style("fill", function(d) {
+			if (nameSet.has(d.name.toLowerCase()) || parentSet.has(d.id))
+				return "#000000";
+			else return "#A3A3A3";
+		}).style("font-size", function(d) {
+			return (nameSet.has(d.name.toLowerCase())|| parentSet.has(d.id))? "15px" : "10px";
+		}).text(function(d) {
+			if (nameSet.has(d.name.toLowerCase())) return d.name;
+			else return d.name;
+		}).style("text-shadow", "0px 0px 3px #FFFFFF")
+		.attr("x", function(d) { 
+					if (d.parent != "null")
+						if (d.x < nodearr[d.parent].x)
+							return d.x - d.r - 2 - this.getComputedTextLength() + "px" ;
+					else
+						return d.x + d.r + "px" ;	
+				})
+				.attr("y", function(d) {
+					if (d.parent != "null")
+						if(d.y < nodearr[d.parent].y)
+							return d.y - d.r;
+					else
+						return d.y + d.r + 2;
+				});
+
+		/*.sort(function(a, b) {
+
+			if (nameSet.has(a.name.trim().toLowerCase()) || parentSet.has(a.id)) return 1;
+				else return -1;
+		});*/
+		
+	}
+
+	function mouseoverToggleNode(nodeid) {
+	
+		nodearr[nodeid].selected = true;
+		
+		d3.selectAll("circle").style("fill", function(d) {
+		if(d.id == nodeid || d.parent == nodeid ) {
+				return colorHeatMax(d);
+			} else {	return "#BCBCBC"; }
+		}).style("stroke", function(d) {
+			if(d.id == nodeid || d.parent == nodeid ) {
+				return colorHeatMax(d);
+			} else { 	return "#BCBCBC";}
+		});
+		
+		d3.selectAll("polygon.link").style("stroke", function(d) {
+				if (d.source.id == nodeid) { return "#FF8533";	} 
+				else { 	return "#DFDFDF";	}		
+			})
+			.style("fill", function(d) {
+				if (d.source.id == nodeid) {	return "#FF8533";	} 
+				else { 	return "#DFDFDF";	}		
+			});
+		d3.selectAll("polygon.link").sort(function(a, b) {
+					if (b.target.id == nodeid || b.source.id == nodeid) 
+						return 1;
+					else return -1;
+		});
+			
+
+		d3.select("#graph").selectAll("text")
+			.style("fill", function(d) { 
+				if(d.id == nodeid || d.parent == nodeid ) 
+					return "#000000"
+				else 
+					return "#C9C9C9"; 
+			});			
+	}
+
+	function mouseoverParentText(pnode) {
+		d3.select("#graph").selectAll("text").style("fill", function(d) {
+			return nameSet.has(d.name.toLowerCase()) ? "#000000" :
+				"#C9C9C9";
+		}).style("font-size", function(d) {
+			return nameSet.has(d.name.toLowerCase()) ? "15px" : "10px";
+		});
+	}
+
+	function emptyElement(element) {
+		//Removes nulls, zeros (also falses), text version of false, and blank element
+		if (element == null || element == 'undefined') return false;
+		else return true;
+	}
+
+	function start() {
+		var ticksPerRender = 10;
+		requestAnimationFrame(function render() {
+			for (var i = 0; i < ticksPerRender; i++) {
+				force.tick();
+			}
+	/*		link.attr("points", calculatePolygon);
+			node.attr("transform", function(d) {
+				return "translate(" + d.x + "," + d.y + ")";
+			});
+			var origin_x = nodearr[0].x;
+			var origin_y = nodearr[1].y;
+
+			d3.selectAll(".node > text").attr("transform", function(d) {
+				console.log(this.getComputedTextLength());
+				if (d.x < origin_x) return "translate(" + (d.r * 2) + "," +
+					2 + ")";
+				else return "translate(" + (d.r * 2) + "," + 2 + ")";
+			});		
+*/
+
+			node.attr("x", function(d) { return d.x;})
+				.attr("y", function(d) { return d.y;});
+			d3.selectAll(".node > circle").attr("cx", function(d) { return d.x;})
+				.attr("cy", function(d) { return d.y;});
+			link.attr("points", calculatePolygon);
+
+			d3.selectAll(".node > text").attr("x", function(d) { 
+					if (d.parent != "null")
+						if (d.x < nodearr[d.parent].x)
+							return d.x - d.r - 2 - this.getComputedTextLength() + "px" ;
+					else
+						return d.x + d.r + "px" ;	
+				})
+				.attr("y", function(d) {
+					if (d.parent != "null")
+						if(d.y < nodearr[d.parent].y)
+							return d.y - d.r;
+					else
+						return d.y + d.r + 2;
+				});
+
+			if (force.alpha() > 0) {
+				if(ticksPerRender > 3) --ticksPerRender;
+				requestAnimationFrame(render);
+			}
+		})
+	}
+
+	function calculatePolygon(d) {
+		var p2, w, v2, p3, v1, p2, tv1, t1, tv2, t2;
+		if (d.source.level == 0) {
+			p2 = d.source;
+			w = diff(d.target, p2);
+			v2 = scale(rotate90(w), d.source.r / length(w));
+			p3 = sum(p2, v2);
+			v1 = scale(rotate180(w), d.source.r / length(w));
+			p2 = sum(p2, v1);
+			tv1 = scale(rotate90(w), d.target.r / (length(w) * 2));
+			t1 = sum(d.target, tv1);
+			tv2 = scale(rotate180(w), d.target.r / (length(w) * 2));
+			t2 = sum(d.target, tv2);
+			
+		} else {
+			p2 = d.source;
+			w = diff(d.target, p2);
+			v2 = scale(rotate90(w), d.source.r / (length(w) * 2));
+			p3 = sum(p2, v2);
+			v1 = scale(rotate180(w), d.source.r / (length(w) * 2));
+			p2 = sum(p2, v1);
+			tv1 = scale(rotate90(w), d.target.r / (length(w) * 2));
+			t1 = sum(d.target, tv1);
+			tv2 = scale(rotate180(w), d.target.r / (length(w) * 2));
+			t2 = sum(d.target, tv2);
+		}
+		if (jQuery.isEmptyObject(d.target.children) && jQuery.isEmptyObject(d.target
+			._children)) { 
+			return pr(d.target) + " " + pr(p2) + " " + pr(p3);
+		} else return pr(t1) + " " + pr(t2) + " " + pr(p2) + " " + pr(p3);
+
+		function length(v) {
+			return Math.sqrt(v.x * v.x + v.y * v.y)
+		}
+
+		function diff(v, w) {
+			return {
+				x: v.x - w.x,
+				y: v.y - w.y
+			}
+		}
+
+		function sum(v, w) {
+			return {
+				x: v.x + w.x,
+				y: v.y + w.y
+			}
+		}
+
+		function scale(v, f) {
+			return {
+				x: f * v.x,
+				y: f * v.y
+			}
+		}
+
+		function rotate90(v) {
+				return {
+					x: v.y,
+					y: -v.x
+				}
+			} // clockwise
+
+		function rotate180(v) {
+			return {
+				x: -v.y,
+				y: v.x
+			}
+		}
+
+		function pr(v) {
+			return v.x + "," + v.y
+		}
+	}
+
+	function color(d) {
+		if (d.id == 0) return "#8A00B8";
+		else return d._children ? "#0066FF" : d.children ? "#75D1FF" :
+			"#FF4719";
+	}
+
+	function border(d) {
+			if (d.id == 0) return "#8A00B8";
+			else return d._children ? "#0066FF" : d.children ? "#75D1FF" :
+				"#FF4719";
+		}
+		
+		/*
+		 * Expand/Collapse subtree rooted at selected node
+		 */
+	function toggleCollapse(d) {
+		
+		mouseout();
+		if (d3.event.defaultPrevented) return;
+		d3.event.preventDefault();
+	//	if (d3.event.defaultPrevented) return; // ignore drag
+		if (d.children) {
+			d._children = d.children;
+			d.children = null;
+			d.globalexpand = false;
+			//d.selected = true;
+			setExpandLevel(d.id, d.level - 1, false);
+			update();
+		} else {
+			globalnodetoggled = true;
+			d.children = d._children;
+			d._children = null;
+			d.globalexpand = true;
+			setExpandLevel(d.id, d.level, true);
+			update();
+
+			if(!jQuery.isEmptyObject(d.children)) {
+				mouseoverToggleNode(d.id);
+			}
+		}
+	}
+	
+	/*
+	 * Expand next level of tree rooted at current node
+	 */
+	function expand(d) {
+		if (d._children) {
+			expandflag = true;
+			d.children = d._children;
+			d._children = null;
+		}
+	}
+	/*
+	 * Expand next level for all current nodes at last level
+	 */
+	function expandLevel() {
+		
+		var nodeids = new Set();
+		for (var i = 0; i < nodearr.length; i++) {
+			if (nodearr[i].globalexpand == false && nodearr[nodearr[i].parent].children &&
+				!jQuery.isEmptyObject(nodearr[i]._children)) {
+				nodeids.add(i);
+			}
+		}
+		nodeids.forEach(function(id) {
+			setExpandLevel(id, nodearr[id].level, true);
+			nodearr[id].globalexpand = true;
+			nodearr[id].children = nodearr[id]._children;
+			nodearr[id]._children = null;
+		});
+		update();
+		mouseout(); 
+	}
+	/*
+	 * Expand complete topic tree
+	 */
+	function expandAll() {
+		mouseout();
+		for (var i = 0; i < nodearr.length; i++) {
+			if (nodearr[i]._children) {
+				nodearr[i].globalexpand = true;
+				nodearr[i].children = nodearr[i]._children;
+				nodearr[i]._children = null;
+				//expand(nodearr.data()[0]);
+			}
+		}
+		update();
+	}
+	/*
+	 * Collapse last level for all current nodes
+	 */
+	function collapseLevel() {
+		var nodeids = new Set();
+		var nodes = new Set();
+		for (var i = 1; i < nodearr.length; i++) {
+			
+			if (nodearr[nodearr[i].parent].level == nodearr[nodearr[i].parent].expandlevel &&
+				nodearr[i].globalexpand == false && nodearr[nodearr[i].parent].globalexpand ==
+				true && nodearr[nodearr[i].parent].level != 0) {
+				nodeids.add(nodearr[nodearr[i].parent].id);
+			}
+		}
+		nodeids.forEach(function(id) {
+			setExpandLevel(id, nodearr[id].level - 1, false);
+			nodearr[id].globalexpand = false;
+			nodearr[id]._children = nodearr[id].children;
+			nodearr[id].children = null;
+		});
+		update();
+	}
+	/*
+	 * Collapse all level except level 1
+	 */	
+	function collapseAll() {
+		mouseout();
+		d3.selectAll(".node").each(function(d) {
+			if (d.children && d.id != 0) {
+				
+				d._children = d.children;
+				d.children = null;
+				d.globalexpand = false;
+			}
+		});
+		update();
+	/*var dcx = (window.innerWidth/2);
+	var dcy = (window.innerHeight/2);
+			d3.selectAll(".node").attr("transform", function(d) { return "translate("+ dcx + "," + dcy  + ")";});
+	d3.selectAll("polygon.link").attr("transform", function(d) { return "translate(" + dcx + "," + dcy  + ")";});
+	//node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+ 	d3.selectAll(".node > text").attr("transform", function(d) { return "translate(" + dcx-d.x+ "," + dcy-d.y + ")"; });
+*/
+	 
+
+		
+	}
+	/*
+	 * Compute maximum expand level for corresponding subtree
+	 */
+	function setExpandLevel(id, lastexpandedlevel, increase) {
+			if (increase == true) {
+				if (nodearr[id].parent != "null") {
+					
+					if (lastexpandedlevel > nodearr[id].expandlevel) nodearr[id].expandlevel =
+						lastexpandedlevel;
+					setExpandLevel(nodearr[id].parent, lastexpandedlevel, true);
+				}
+				if (lastexpandedlevel > nodearr[id].expandlevel) nodearr[id].expandlevel =
+					lastexpandedlevel;
+				return;
+			} else {
+				if (nodearr[id].parent != "null") {
+					if (lastexpandedlevel < nodearr[id].expandlevel) nodearr[id].expandlevel =
+						lastexpandedlevel;
+					setExpandLevel(nodearr[id].parent, lastexpandedlevel, false);
+				}
+				if (lastexpandedlevel < nodearr[id].expandlevel) nodearr[id].expandlevel =
+					lastexpandedlevel;
+				return;
+			}
+		}
+	// Returns a list of all nodes under the root.
+	function flatten(root) {
+			var nodes = [],
+				i = 0;
+
+			function recurse(node) {
+				if (node.children) node.children.forEach(recurse);
+				if (!node.id) node.id = ++i;
+				nodes.push(node);
+			}
+			recurse(root);
+			return nodes;
+		}
+		// redraw the svg (or rather the <g> inside <svg>) on a zoom event
+
+	function redraw() {
+		if (!global["mouseDownOnNode"]) container.attr("transform",
+			"translate(" + d3.event.translate + ")" + " scale(" + d3.event.scale +
+			")");
+	}
+
+	function display(checked) {
+		if (!checked) expandAll();
+		else collapseAll();
+	}
+
+	function colorHeatMax(d) {
+		var color_range = ["#1F1F7A", "#7070FF", "#70B8FF", "#D6EBFF"];
+		var color = d3.scale.linear().domain([1, heatMaxSize / 2.0, 3.0 *
+			heatMaxSize / 4.0, heatMaxSize
+		]).range(color_range);
+		return color(d.level);
+	}
+	
+	function showMetrics(d) {
+		$('#metric-time-span').css("display", "inline");
+		$('#slider').val("0");
+		$('#time-range-value').html("14 Days");
+		globalMetricArray['numkeyword'] = {};
+		globalMetricArray['keywordmatched'] = {};
+		globalMetricArray['numdoc'] = {};
+		globalMetricArray['numinteraction'] = {};
+		globalMetricArray['numcontact'] = {};
+		globalMetricArray['numkeyword'] = d.numkeyword;
+		globalMetricArray['keywordmatched'] = d.keywordmatched;
+		globalMetricArray['numdoc'] = d.numdoc;
+		globalMetricArray['numinteraction'] = d.numinteraction;
+		globalMetricArray['numcontact'] = d.numcontact;
+		$("#keywords-mapped").text(d.numkeyword);
+		$("#keywords-matched").text(d.keywordmatched);
+		if(!jQuery.isEmptyObject(d.numdoc))
+			$("#documents-matched").text(d.numdoc[0]);
+		if(!jQuery.isEmptyObject(d.numinteraction))
+			$("#interactions").text(d.numinteraction[0]);
+		if(!jQuery.isEmptyObject(d.numcontact))
+			$("#contacts").text(d.numcontact[0]);
+	}
+	/*
+	 * Change metric values according to time range
+	 */
+	function changeMetric(i) {
+		var days = 14;
+		switch (i) {
+			case "0":
+				days = 14;
+				break;
+			case "1":
+				days = 30;
+				break;
+			case "2":
+				days = 60;
+				break;
+			case "3":
+				days = 90;
+				break;
+			case "4":
+				days = 180;
+				break;
+		}
+		$('.metric-value').html('');
+		//$('#time-range-value').html('');
+		$('#time-range-value').html(days + " Days");
+		$("#keywords-mapped").text(globalMetricArray['numkeyword']);
+		$("#keywords-matched").text(globalMetricArray['keywordmatched']);
+		$("#documents-matched").text(globalMetricArray['numdoc'][i]);
+		$("#interactions").text(globalMetricArray['numinteraction'][i]);
+		$("#contacts").text(globalMetricArray['numcontact'][i]);
+	}
+	/*
+	 * Show description panel
+	 */
+	function showDesc(d) {
+
+		$('#desc').css("display", "block");
+		var idstr = "", visible = "", rollup = "", scoringenabled = "", wordmap = "", desc = "";
+		if(d.actualID!="") {
+			idstr = "<font color='#0066FF'>Topic ID:</font> " + d.actualID + ""; }
+		if(!jQuery.isEmptyObject(d.visible))
+			visible = "<font color='#0066FF'>Visible: </font>" + d.visible + "";
+		if(!jQuery.isEmptyObject(d.rollup))
+			rollup = "<font color='#0066FF'> Rollup: </font>" + d.rollup + "";
+		if(!jQuery.isEmptyObject(d.scoringenabled))
+			scoringenabled = "<font color='#0066FF'> Scoring Enabled: </font>" + d.scoringenabled + "";
+		if(!jQuery.isEmptyObject(d.wordmap))
+			wordmap = "<font color='#0066FF'>WordMap ID: </font>" + d.wordmap + "";
+		if(!jQuery.isEmptyObject(d.description))
+			desc = "<font color='#0066FF'>Description: </font>" + d.description + "";
+	
+		var str = idstr + "<br>"+ desc + "<br> " + visible + "<br> " + rollup + "<br> " +
+			scoringenabled + "<br> " + wordmap;
+		$("#desc").html(str);
+	}
+
+	function genWordList() {
+		for (var i = 0; i < nodearr.length; i++) {
+			var numlang = nodearr[i].lang;
+			//	var keywordSet = new Set();
+			var keywordMap = new Map();
+			if (!jQuery.isEmptyObject(numlang)) {
+				for (var p = 0; p < numlang.length; p++) {
+					var lang = numlang[p];
+					for (var q = 0; q < nodearr[i].keywords[p][lang].length; q++) {
+						var arr = nodearr[i].keywords[p][lang][q].trim().toLowerCase()
+							.split(" ");
+						for (var j = 0; j < arr.length; j++) {
+
+							if (keywordMap.has(arr[j])) {
+								var keywordSet = new Set(keywordMap.get(arr[j]));
+								keywordSet.add(nodearr[i].keywords[p][lang][q].trim()
+									.toLowerCase());
+
+								keywordMap.set(arr[j], keywordSet);
+							} else {
+								var keywordSet = new Set();
+								keywordSet.add(nodearr[i].keywords[p][lang][q].trim()
+									.toLowerCase());
+								keywordMap.set(arr[j], keywordSet);
+
+							}
+						}
+					}
+				}
+			}
+
+			nodearr[i].wordList = keywordMap; 
+		}
+	}
+	/*
+	 * Format keywords into HTML table, by default ENGLISH keywords
+	 */ 
+	function showKeywords(d) {
+		var tbl = $("<table/>").attr("id", "keyword-table");
+		$('#keyword-inner-pane').empty();
+		$('#select-lang').html('').prop('disabled', false);
+		if (!jQuery.isEmptyObject(d.lang)) {
+
+			var num_lang = d.lang;
+			for (var i = 0; i < num_lang.length; i++) {
+				var lang = d.lang[i];
+				var selected = "";
+				if (d.lang[i].trim().toLowerCase() == "english") selected =
+					"selected";
+				var option = "<option value=" + d.lang[i] + " " + selected +
+					" >" + d.lang[i] + "</option>";
+				$("#select-lang").append(option);
+				$("#keyword-inner-pane").append(tbl);
+
+				globalKeywordArray[lang] = {};
+				globalKeywordArray[lang] = d.keywords[i][lang];
+				for (var j = 0; j < d.keywords[i][lang].length; j++) {
+
+					var td = "<tr><td>" + d.keywords[i][lang][j] + "</td></tr>";
+					$("#keyword-table").append(td);
+				}
+			}
+			$("#select-lang").append(
+				'<option value="all" >All Languages</option>');
+		}
+	}
+	/*
+	 * Format keywords resulted from search box input into HTML table
+	 */
+	function showSelectedKeywords(d) {
+		var tbl = $("<table/>").attr("id", "keyword-table");
+		$('#keyword-inner-pane').empty();
+		$("#keyword-inner-pane").append(tbl);
+		d.forEach(function(val) {
+			var td = "<tr><td>" + val + "</td></tr>";
+			$("#keyword-table").append(td);
+		});
+	}
+	/*
+	 * Filter keywords by language and format keywords into HTML table
+	 */
+	function showKeywordList(val) {
+			$("#keyword-table").empty();
+			if (val != "all") {
+				for (var j = 0; j < globalKeywordArray[val].length; j++) {
+					var td = "<tr><td>" + globalKeywordArray[val][j] + "</td></tr>";
+					$("#keyword-table").append(td);
+				}
+			} else {
+				for (var val in globalKeywordArray) {
+					for (var j = 0; j < globalKeywordArray[val].length; j++) {
+						var td = "<tr><td>" + globalKeywordArray[val][j] +
+							"</td></tr>";
+						$("#keyword-table").append(td);
+					}
+				}
+			}
+		}
+		/*
+	$("#keyword-filter").keydown(function(e){
+		var keycode = e.keyCode;
+
+		var valid = 
+			(keycode >= 43 && keycode <= 59)   || // number keys
+			keycode == 32                    || // spacebar 
+			keycode == 61					||
+			(keycode > 64 && keycode < 91)   || // letter keys
+			(keycode >= 95 && keycode < 112)  || // numpad keys
+			(keycode > 185 && keycode < 193) || // ;=,-./` (in order)
+			(keycode > 218 && keycode < 223);   // [\]' (in order)
+		
+		return valid;
+	});
+
+	$("#keyword-filter").keypress(function(e){
+		var charcode = e.charCode;
+		var char = String.fromCharCode(charcode);
+		//console.log(char + " " + String.fromCharCode(63));
+		getSearchKey($("#keyword-filter").value, "keyword-filter")
+	});
+	*/
+
+	/*
+	 * Display/Hide inner keyword panel on node selections
+	 */
+	function toggleKeywordPane() {
+		var currprop = $('#keyword-pane').css("display");
+		if (currprop == "none") {
+			$('.keywordButton').addClass("button-select");
+		} else {
+			$('.keywordButton').removeClass("button-select");
+		}
+	}
+	
+	$(function() {
+    $('#help').click(function(){
+        $('#overlay').fadeIn('fast',function(){
+            $('#helpbox').animate({'top':'160px'},500);
+        });
+    });
+    $('#boxclose').click(function(){
+        $('#helpbox').animate({'top':'-200px'},500,function(){
+            $('#overlay').fadeOut('fast');
+        });
+    });
+
+	});
+	</script>
+
+	<div id="left-panel">
+        <div id="keyword-pane">
+            <div id="keywords-header">
+                Keywords
+            </div>
+
+            <div class="styled-select">
+                <select disabled id="select-lang" onchange=
+                "showKeywordList(this.value)">
+                    </select>
+            </div>
+
+            <div id="keyword-inner-pane"></div>
+        </div>
+
+        <div id="description-pane">
+            <div id="keywords-header">
+                Topic Description
+            </div>
+
+            <div id="desc"></div>
+        </div>
+    </div>
+
+    <div id="chart-pane" style="display:none;">
+        <div class="metric-box" style="background-color: rgba(0, 61, 61, 0.8);"
+        title="Number of keywords associated with topic">
+            <span class="metric-value" id="keywords-mapped"></span><br>
+
+            <div class="metric-label">
+                #KEYWORDS<br>
+                MAPPED
+            </div>
+        </div>
+
+        <div class="metric-box" style="background-color: rgba(0, 92, 92, 0.8);"
+        title=
+        "Number of topic keywords matching actual assets (emails, webpages, etc.)">
+        <span class="metric-value" id="keywords-matched"></span><br>
+
+            <div class="metric-label">
+                #KEYWORDS<br>
+                MATCHED
+            </div>
+        </div>
+
+        <div class="metric-box" style=
+        "background-color: rgba(0, 122, 122, 0.8);" title=
+        "Number of documents(emails, webpages,etc.) associated with topic">
+            <span class="metric-value" id="documents-matched"></span><br>
+
+            <div class="metric-label">
+                #DOCUMENTS<br>
+                MATCHED
+            </div>
+        </div>
+
+        <div class="metric-box" style=
+        "background-color: rgba(0, 153, 153, 0.8);" title=
+        "Number of interactions associated with a topic">
+            <span class="metric-value" id="interactions"></span><br>
+
+            <div class="metric-label">
+                #INTERACTIONS
+            </div>
+        </div>
+
+        <div class="metric-box" style=
+        "background-color: rgba(51, 173, 173, 0.8);" title=
+        "Number of unique contacts contacts scored in a topic">
+            <span class="metric-value" id="contacts"></span><br>
+
+            <div class="metric-label">
+                #CONTACTS
+            </div>
+        </div>
+    </div>
+	
+	<div class="overlay" id="overlay" style="display:none;"></div>
+	<div id="helpbox"><a class="boxclose" id="boxclose">X</a>
+		<ul>
+		<li>Hover Over Topic Node to highlight the topic</li>
+		<li>Click on whitespace to remove node selections</li>
+		
+		</ul>
+		
+	</div>
+</body>
+</html>

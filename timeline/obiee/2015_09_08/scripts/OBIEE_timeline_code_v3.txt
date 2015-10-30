@@ -1,0 +1,243 @@
+/*
+ * Place following code in PREFIX section
+ */
+ 
+ 
+<script type="text/javascript" src="/analytics/res/b_mozilla/common/timeseries/jquery-2.1.4.min.js"></script>
+<script type="text/javascript" src="/analytics/res/b_mozilla/common/timeseries/timeline.js"></script>
+<script type="text/javascript" src="/analytics/res/b_mozilla/common/timeseries/notify.js"></script>
+
+<link rel="stylesheet" type="text/css" href="/analytics/res/b_mozilla/common/timeseries/timeline.css"/>
+
+<script type="text/javascript">
+
+   // Set callback to run when API is loaded
+   $(document).ready( function() {drawVisualization();});
+
+   var timeline, data;
+
+   // Called when the timelineualization API is loaded.
+   function drawVisualization() {
+
+            function addRow(startDate, endDate, content, backgroundColor, borderColor)
+            {
+                // we make our own customized layout for the events
+
+                if (backgroundColor == undefined)
+                    backgroundColor = "yellow";
+                if (borderColor == undefined)
+                    borderColor = "gold";
+
+                var fill = endDate ? "pink" : "yellow";
+                var div = '<div style="background-color:' + backgroundColor +
+                        '; border:1px solid ' + borderColor + ';padding:5px;">' +
+                        content + '</div>';
+
+		}
+
+data = [{}];
+
+
+
+/*
+ * Place following code in NARRATIVE section
+ */
+ 
+ 
+ 
+data.push({ 
+'start': new Date("@1"),
+'content': '<div id="@2" onclick="showDetailBox(@2,\\'@4\\')">@3</div>'
+});
+
+
+/*
+ * Place following code in POSTFIX section
+ */
+ 
+ 
+ 
+            // specify options
+            var options = {
+                'width':  "1000px",
+                'height': "auto",
+			/*
+			 * highlightfrcolor controls event box foreground color on selection
+			 * highlightbkcolor controls event box background color on selection
+			 */
+				'highlightfrcolor': "#FFFFFF",
+				'highlightbkcolor': "",
+                'box': {
+					'align': "left"
+				},
+				'style':    "triangleRight"    // optional. choose "dot" (default), "box", or "none"
+				
+            };
+			/*
+			 * Following are the options and their default values.
+			 * All these options can be controlled by user by calling setOptions.
+			 * 
+			 *       'width': "100%",
+			 *       'height': "auto",
+			 *        'minHeight': 0,        // minimal height in pixels
+			 *       'groupMinHeight': 0,
+			 *       'autoHeight': true,
+			 *
+			 *       'eventMargin': 10,     // minimal margin between events
+			 *       'eventMarginAxis': 20, // minimal margin between events and the axis
+			 *       'dragAreaWidth': 10,   // pixels
+			 *
+			 *       'min': undefined,
+			 *       'max': undefined,
+			 *       'zoomMin': 10,     // milliseconds
+			 *       'zoomMax': 1000 * 60 * 60 * 24 * 365 * 10000, // milliseconds
+			 *
+			 *       'moveable': true,
+			 *       'zoomable': true,
+			 *       'selectable': true,
+			 *       'unselectable': true,
+			 *       'editable': false,
+			 *       'snapEvents': true,
+			 *       'groupsChangeable': true,
+			 *       'timeChangeable': true,
+			 *
+			 *       'showCurrentTime': true, // show a red bar displaying the current time
+			 *       'showCustomTime': false, // show a blue, draggable bar displaying a custom time
+			 *       'showMajorLabels': true,
+			 *       'showMinorLabels': true,
+			 *       'showNavigation': false,
+			 *       'showButtonNew': false,
+			 *       'groupsOnRight': false,
+			 *       'groupsOrder' : true,
+			 *       'axisOnTop': false,
+			 *       'stackEvents': true,
+			 *       'animate': true,
+			 *       'animateZoom': true,
+			 *       'cluster': false,
+			 *       'clusterMaxItems': 5,
+			 *       'style': 'box',
+			 *       'customStackOrder': false, //a function(a,b) for determining stackorder amongst a group of items. Essentially a comparator, -ve value for "a before b" and vice versa
+			 *       
+			 *      // i18n: Timeline only has built-in English text per default. Include timeline-locales.js to support more localized text.
+			 *       'locale': 'en',
+			 *       'MONTHS': ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+			 *       'MONTHS_SHORT': ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+			 *       'DAYS': ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+			 *       'DAYS_SHORT': ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+			 *       'ZOOM_IN': "Zoom in",
+			 *       'ZOOM_OUT': "Zoom out",
+			 *       'MOVE_LEFT': "Move left",
+			 *       'MOVE_RIGHT': "Move right",
+			 *       'NEW': "New",
+			 *       'CREATE_NEW_EVENT': "Create new event"
+			 *   
+			 */
+            // Instantiate our table object.
+            timeline = new links.Timeline(document.getElementById('mytimeline'), options);
+timeline.setOptions(options);
+            // Draw our table with the data we created locally.
+            timeline.draw(data);
+
+            // Set the scale by hand. Autoscaling will be disabled.
+            // Note: you can achieve the same by specifying scale and step in the
+            // options for the timeline.
+            timeline.setScale(links.Timeline.StepDate.SCALE.DAY, 2);
+        }
+
+        // adjust start and end time.
+        function setTime() {
+            if (!timeline) return;
+			
+            var newStartDate = new Date(document.getElementById('startDate').value);
+            var newEndDate   = new Date(document.getElementById('endDate').value);
+            timeline.setVisibleChartRange(newStartDate, newEndDate);
+            timeline.redraw();
+        }
+
+        function onrangechange() {
+            // adjust the values of startDate and endDate
+            var range = timeline.getVisibleChartRange();
+            document.getElementById('startDate').value = dateFormat(range.start);
+            document.getElementById('endDate').value   = dateFormat(range.end);
+        }
+
+        function onselect() {
+            var sel = timeline.getSelection();
+            if (sel.length) {
+                if (sel[0].row != undefined) {
+                    var row = sel[0].row;
+                    alert("event " + row + " selected");
+                }
+            }
+        }
+
+	function showDetailBox(id, txt) {
+		$('#' +id).notify(txt, {autoHide: false, style: 'happyblue'});
+	}
+</script>
+
+<body onresize="if (timeline) {timeline.redraw();}">
+<p>
+    Start Date: <input type="text" id="startDate" value="" placeholder="mm/dd/yyyy" >
+    End Date:   <input type="text" id="endDate" value="" placeholder="mm/dd/yyyy">
+    <input type="button" id="setStartDate" value="set" onclick="setTime();">
+</p>
+<div id="mytimeline" ></div>
+
+<script>
+	$.notify.addStyle('happyblue', {
+		html: "<div><span data-notify-text/></div>",
+		classes: {
+			base: {
+				"font-weight": "bold",
+				  "padding": "8px 15px 8px 14px",
+				  "text-shadow": "0 1px 0 rgba(255, 255, 255, 0.5)",
+				  "color": "#FFFFFF", 
+				  "background-color": "#5B5B5B",
+				  "border": "1px solid #000000",
+				  "border-radius": "4px",
+				  "white-space": "nowrap",
+				  "padding-left": "25px",
+				  "background-repeat": "no-repeat",
+				  "background-position": "3px 7px",
+				  "z-index": "1000"
+
+			
+			}
+		}
+	});
+	//notifyjs-happyblue-base notifyjs-happyblue-error
+	$(document).click( function(event) {
+		
+		var selnotify = $(event.target)[0].id;
+
+		var thisnotify = $(event.target)[0].previousSibling;
+		
+		var allnotify = document.getElementsByClassName("notifyjs-wrapper notifyjs-hidable");
+		for(var i = 0; i < allnotify.length; i++) {
+			if( allnotify[i] != thisnotify )
+
+				$(allnotify[i]).trigger('notify-hide');
+		}
+	});
+	$(document).click( function() {
+		var allnotifybox = document.getElementsByClassName("notifyjs-container");
+		var dots = document.getElementsByClassName("timeline-event timeline-event-dot ui-widget ui-state-default timeline-event-selected ui-state-active");
+
+		for(var j = 0; j < dots.length; j++) {
+			var d = dots[j].getBoundingClientRect();
+			for(var i = 0; i < allnotifybox.length; i++) {
+			
+			var n = allnotifybox[i].getBoundingClientRect();
+
+				if(	d.top < n.top && d.bottom > n.bottom &&
+					d.left > n.left && d.right < n.right	)
+						dots[j].style.opacity = 0;
+				else
+					dots[j].style.opacity = 1;
+				
+			}
+		}
+	});
+</script>
+</body>

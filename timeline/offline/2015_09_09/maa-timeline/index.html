@@ -1,0 +1,325 @@
+<!--
+	Updated By: Mandar Darwatkar
+	Last Updated: 
+	Description: Event Timeline is user-friendly, customizable, interactive timeline chart
+	with auto-stacking of elements.
+-->
+
+<html>
+<head>
+<!--
+	Include required external scripts:
+	- timeline.js contains the timeline implementation, 
+	change only when you cannot handle implementation with existing function.
+	- timeline.css contains default CSS styling
+-->
+    <script type="text/javascript" src="js/jquery-2.1.4.min.js"></script>
+	<script type="text/javascript" src="js/timeline.js"></script>
+	<script src="js/notify.js"></script>
+	<link rel="stylesheet" type="text/css" href="css/timeline.css">
+		
+    <script type="text/javascript">
+		var timeline;
+     
+		// Draw timeline when document loads
+		$(document).ready( function() {
+			$("eventinputfile").val("");
+			drawVisualization();
+			});
+
+        function drawVisualization(data) {
+
+	        // specify options
+            var options = {
+                'width':  "95%",
+                'height': "auto",
+				/*
+				 * highlightfrcolor controls event box foreground color on selection
+				 * highlightbkcolor controls event box background color on selection
+				 */
+				//'highlightfrcolor': "#FFFFFF",
+				//'highlightbkcolor': "#000000",
+                // Event box alignment left, right, center
+				'box': {
+					'align': "left"
+				},
+				'style':    "triangleRight"    // optional. choose "dot" (default), "box", "triangleRight"
+				
+            };
+			/*
+			 * Following are the options and their default values.
+			 * All these options can be controlled by user by calling setOptions.
+			 * 
+			 *       'width': "100%",
+			 *       'height': "auto",
+			 *        'minHeight': 0,        // minimal height in pixels
+			 *       'groupMinHeight': 0,
+			 *       'autoHeight': true,
+			 *
+			 *       'eventMargin': 10,     // minimal margin between events
+			 *       'eventMarginAxis': 20, // minimal margin between events and the axis
+			 *       'dragAreaWidth': 10,   // pixels
+			 *
+			 *       'min': undefined,
+			 *       'max': undefined,
+			 *       'zoomMin': 10,     // milliseconds
+			 *       'zoomMax': 1000 * 60 * 60 * 24 * 365 * 10000, // milliseconds
+			 *
+			 *       'moveable': true,
+			 *       'zoomable': true,
+			 *       'selectable': true,
+			 *       'unselectable': true,
+			 *       'editable': false,
+			 *       'snapEvents': true,
+			 *       'groupsChangeable': true,
+			 *       'timeChangeable': true,
+			 *
+			 *       'showCurrentTime': true, // show a red bar displaying the current time
+			 *       'showCustomTime': false, // show a blue, draggable bar displaying a custom time
+			 *       'showMajorLabels': true,
+			 *       'showMinorLabels': true,
+			 *       'showNavigation': false,
+			 *       'showButtonNew': false,
+			 *       'groupsOnRight': false,
+			 *       'groupsOrder' : true,
+			 *       'axisOnTop': false,
+			 *       'stackEvents': true,
+			 *       'animate': true,
+			 *       'animateZoom': true,
+			 *       'cluster': false,
+			 *       'clusterMaxItems': 5,
+			 *       'style': 'box',
+			 *       'customStackOrder': false, //a function(a,b) for determining stackorder amongst a group of items. Essentially a comparator, -ve value for "a before b" and vice versa
+			 *       
+			 *      // i18n: Timeline only has built-in English text per default. Include timeline-locales.js to support more localized text.
+			 *       'locale': 'en',
+			 *       'MONTHS': ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+			 *       'MONTHS_SHORT': ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+			 *       'DAYS': ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+			 *       'DAYS_SHORT': ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+			 *       'ZOOM_IN': "Zoom in",
+			 *       'ZOOM_OUT': "Zoom out",
+			 *       'MOVE_LEFT': "Move left",
+			 *       'MOVE_RIGHT': "Move right",
+			 *       'NEW': "New",
+			 *       'CREATE_NEW_EVENT': "Create new event"
+			 *   
+			 */
+			 
+            // Instantiate our table object.
+            timeline = new links.Timeline(document.getElementById('mytimeline')	);
+			// Set user-defined options
+			timeline.setOptions(options);
+            // Draw our table with the data we created locally.
+            timeline.draw(data);
+
+            // Set the scale by hand. Autoscaling will be disabled.
+            // Note: you can achieve the same by specifying scale and step in the
+            // options for the timeline.
+            //timeline.setScale(links.Timeline.StepDate.SCALE.DAY,31);
+			//timeline.setScale(links.Timeline.StepDate.SCALE.MONTH, 1);
+        }
+
+        // adjust frame start and end according to value in input fields.
+        function setTime() {
+            if (!timeline) return;	
+            var newStartDate = new Date(document.getElementById('startDate').value);
+            var newEndDate   = new Date(document.getElementById('endDate').value);
+            timeline.setVisibleChartRange(newStartDate, newEndDate);
+            timeline.redraw();
+        }
+
+		// adjust the value in input text fields according to visible frame range
+        function onrangechange() {
+            // adjust the values of startDate and endDate
+            var range = timeline.getVisibleChartRange();
+            document.getElementById('startDate').value = dateFormat(range.start);
+            document.getElementById('endDate').value   = dateFormat(range.end);
+        }
+
+        // Format given date as "yyyy-mm-dd hh:ii:ss"
+        // @param datetime   A Date object.
+        function dateFormat(date) {
+            var datetime = ((date.getMonth()   <  9) ? "0" : "") + (date.getMonth() + 1) + "/" +
+					((date.getDate()    < 10) ? "0" : "") +  date.getDate() + "/" +
+					date.getFullYear();
+                    //((date.getHours()   < 10) ? "0" : "") +  date.getHours() + ":" +
+                    //((date.getMinutes() < 10) ? "0" : "") +  date.getMinutes() + ":" +
+                    //((date.getSeconds() < 10) ? "0" : "") +  date.getSeconds();
+            return datetime;
+        }
+		
+
+		function showDetailBox(id, txt) {
+			$('#' +id).notify(txt, {autoHide: false, style: 'happyblue'});
+		}
+    </script>
+</head>
+<body onresize="if (timeline) {timeline.redraw();}" onload="if (timeline) {timeline.redraw();}">
+	<p>
+		<label>Select File:</label>
+		<input type="file" id="eventinputfile" name="eventinputfile[]" multiple />
+		
+	</p>
+	<p>
+		Start Date: <input type="text" id="startDate" value="" placeholder="mm/dd/yyyy" >
+		End Date:   <input type="text" id="endDate" value="" placeholder="mm/dd/yyyy">
+		<input type="button" id="setStartDate" value="set" onclick="setTime();">
+	</p>
+	<div id="mytimeline"  onmousemove="onrangechange()" onwheel="onrangechange()"></div>
+	<p>
+		<b>Note:</b>
+		<i>Input file should be CSV with columns event-id, event-name, start-date, end-date, description, txtcolor, bkcolor strictly in order.
+		</br>
+		Empty txtcolor, bkcolor will set color to default settings.
+		Empty end-date will create single day event.
+		</i>
+	</p>
+</body>
+
+
+<script>
+
+  function handleFileSelect(evt) {
+  
+    var files = evt.target.files; // FileList object  
+    // files is a FileList of File objects. List some properties.
+    var output = [];
+    for (var i = 0, f; f = files[i]; i++) {
+		if(!f.type.match('.*ms-excel')) {
+			continue;
+		}
+		var reader = new FileReader();
+		reader.readAsText(f);
+		reader.onload = loadHandler;
+		reader.onerror = errorHandler;
+		
+	}
+   
+  }
+  
+  /* Create JSON object from the input CSV file which contains columns:
+   * event-id, event-name, start-date, end-date, description, txtcolor, bkcolor
+   * strictly in this order
+   */
+    function processData(csv) {
+	
+        var allTextLines = csv.split(/\r\n|\n/);
+        var lines = [];
+		var mindate = "", maxdate = "";
+		
+		
+        for (var i=0; i < allTextLines.length; i++) {
+            console.log(allTextLines[i]);
+			var data = allTextLines[i].split(',');
+                var tarr = [];
+
+                var startDate = new Date(data[2]);
+				var endDate = "", content = "", txtcolor = "", bkcolor = "";
+				if(data[3]!="") {
+					endDate = new Date(data[3]);
+					if(endDate > maxdate)
+						maxdate = endDate;
+				} else
+					endDate = '';
+					
+				if(mindate!="") {
+					if(startDate < mindate)
+						mindate = startDate;
+				} else
+					mindate = startDate;
+				
+				if(maxdate!="") {
+					if(startDate > maxdate)
+						maxdate = startDate;
+				} else
+					maxdate = startDate;
+					
+					
+				if(data[4]!="")
+					content = '<div id=\"'+data[0]+'\" onclick="showDetailBox('+data[0]+',\''+data[4]+'\')">'+data[1]+'</div>';
+				else
+					content = '<div id='+data[0]+'>'+data[1]+'</div>';
+				
+				if(data.length==6)
+					txtcolor = data[5];
+				if(data.length==7)
+					bkcolor = data[6];
+					
+				lines.push( {'start': startDate, 'end' : endDate, 'content': content, 'txtcolor': txtcolor, 'bkcolor': bkcolor} );
+
+        }
+		drawVisualization(lines);
+		
+		//  set the visible frame range to last event end data+4 days and 60 days backwards
+		var finalstartdate = new Date();
+		var finalenddate = new Date();
+		finalenddate.setDate(maxdate.getDate() + 4);
+		finalstartdate.setDate(maxdate.getDate() - 60);
+		timeline.setVisibleChartRange(finalstartdate, finalenddate);
+        timeline.redraw();
+    }
+	
+	function loadHandler(event) {
+		var csv = event.target.result;
+		processData(csv);
+	}
+
+	function errorHandler(evt) {
+		if(evt.target.error.name == "NotReadableError") {
+          alert("Cannot read file !");
+		}
+	}
+  
+  
+	// Check for the various File API support.
+	if (window.File && window.FileReader && window.FileList && window.Blob) {
+		document.getElementById('eventinputfile').addEventListener('change', handleFileSelect, false);
+	} else {
+		alert('The File APIs are not fully supported in this browser.');
+	}
+
+	$(window).load( function() {
+		var w = $(window).width();
+		$('#mytimeline').css('width', w);
+		var timeline = document.getElementsByClassName('timeline-content');
+		//timeline.repaintFrame();
+	});
+
+	$.notify.addStyle('happyblue', {
+		html: "<div><span data-notify-text/></div>",
+		classes: {
+			base: {
+				"font-weight": "bold",
+				  "padding": "8px 15px 8px 14px",
+				  "text-shadow": "0 1px 0 rgba(255, 255, 255, 0.5)",
+				  "color": "#FFFFFF", 
+				  "background-color": "#7F7F7F",
+				  //"border": "1px solid #000000",
+				  "border-radius": "4px",
+				  "white-space": "nowrap",
+				  "padding-left": "25px",
+				  "background-repeat": "no-repeat",
+				  "background-position": "3px 7px",
+				"z-index": "1001"
+
+			
+			}
+		}
+	});
+
+	// show/hide description box depending on click inside/outside box
+	$(document).click( function(event) {
+		
+		var selnotify = $(event.target)[0].id;
+		var thisnotify = $(event.target)[0].previousSibling;
+		
+		var allnotify = document.getElementsByClassName("notifyjs-wrapper notifyjs-hidable");
+		for(var i = 0; i < allnotify.length; i++) {
+			if( allnotify[i] != thisnotify )
+				$(allnotify[i]).trigger('notify-hide');
+		}
+	});
+	
+	</script>
+</html>

@@ -1,0 +1,415 @@
+<!--
+	Updated By: Mandar Darwatkar
+	Last Updated: 
+	Description: Event Timeline is user-friendly, customizable, interactive timeline chart
+	with auto-stacking of elements.
+-->
+
+<html>
+<head>
+<!--
+	Include required external scripts:
+	- timeline.js contains the timeline implementation, 
+	change only when you cannot handle implementation with existing function.
+	- timeline.css contains default CSS styling
+-->
+    <script type="text/javascript" src="js/jquery-2.1.4.min.js"></script>
+	<script type="text/javascript" src="js/timeline.js"></script>
+	<script src="js/notify.js"></script>
+	<link rel="stylesheet" type="text/css" href="css/timeline.css">
+		
+    <script type="text/javascript">
+		var timeline;
+     
+		// Draw timeline when document loads
+		$(document).ready( function() {
+			$("eventinputfile").val("");
+			drawVisualization();
+			});
+
+        function drawVisualization(data) {
+
+	        // specify options
+            var options = {
+                'width':  "95%",
+                'height': "auto",
+				/*
+				 * highlightfrcolor controls event box foreground color on selection
+				 * highlightbkcolor controls event box background color on selection
+				 */
+				//'highlightfrcolor': "#FFFFFF",
+				//'highlightbkcolor': "#000000",
+                // Event box alignment left, right, center
+				'box': {
+					'align': "left"
+				},
+				'style':    "triangleRight"    // optional. choose "dot" (default), "box", "triangleRight"
+				
+            };
+			/*
+			 * Following are the options and their default values.
+			 * All these options can be controlled by user by calling setOptions.
+			 * 
+			 *       'width': "100%",
+			 *       'height': "auto",
+			 *        'minHeight': 0,        // minimal height in pixels
+			 *       'groupMinHeight': 0,
+			 *       'autoHeight': true,
+			 *
+			 *       'eventMargin': 10,     // minimal margin between events
+			 *       'eventMarginAxis': 20, // minimal margin between events and the axis
+			 *       'dragAreaWidth': 10,   // pixels
+			 *
+			 *       'min': undefined,
+			 *       'max': undefined,
+			 *       'zoomMin': 10,     // milliseconds
+			 *       'zoomMax': 1000 * 60 * 60 * 24 * 365 * 10000, // milliseconds
+			 *
+			 *       'moveable': true,
+			 *       'zoomable': true,
+			 *       'selectable': true,
+			 *       'unselectable': true,
+			 *       'editable': false,
+			 *       'snapEvents': true,
+			 *       'groupsChangeable': true,
+			 *       'timeChangeable': true,
+			 *
+			 *       'showCurrentTime': true, // show a red bar displaying the current time
+			 *       'showCustomTime': false, // show a blue, draggable bar displaying a custom time
+			 *       'showMajorLabels': true,
+			 *       'showMinorLabels': true,
+			 *       'showNavigation': false,
+			 *       'showButtonNew': false,
+			 *       'groupsOnRight': false,
+			 *       'groupsOrder' : true,
+			 *       'axisOnTop': false,
+			 *       'stackEvents': true,
+			 *       'animate': true,
+			 *       'animateZoom': true,
+			 *       'cluster': false,
+			 *       'clusterMaxItems': 5,
+			 *       'style': 'box',
+			 *       'customStackOrder': false, //a function(a,b) for determining stackorder amongst a group of items. Essentially a comparator, -ve value for "a before b" and vice versa
+			 *       
+			 *      // i18n: Timeline only has built-in English text per default. Include timeline-locales.js to support more localized text.
+			 *       'locale': 'en',
+			 *       'MONTHS': ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+			 *       'MONTHS_SHORT': ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+			 *       'DAYS': ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+			 *       'DAYS_SHORT': ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+			 *       'ZOOM_IN': "Zoom in",
+			 *       'ZOOM_OUT': "Zoom out",
+			 *       'MOVE_LEFT': "Move left",
+			 *       'MOVE_RIGHT': "Move right",
+			 *       'NEW': "New",
+			 *       'CREATE_NEW_EVENT': "Create new event"
+			 *   
+			 */
+			 
+            // Instantiate our table object.
+            timeline = new links.Timeline(document.getElementById('mytimeline')	);
+			// Set user-defined options
+			timeline.setOptions(options);
+            // Draw our table with the data we created locally.
+            timeline.draw(data);
+
+            // Set the scale by hand. Autoscaling will be disabled.
+            // Note: you can achieve the same by specifying scale and step in the
+            // options for the timeline.
+            timeline.setScale(links.Timeline.StepDate.SCALE.DAY,31);
+			//timeline.setScale(links.Timeline.StepDate.SCALE.MONTH, 1);
+        }
+
+        // adjust frame start and end according to value in input fields.
+        function setTime() {
+            if (!timeline) return;	
+            var newStartDate = new Date(document.getElementById('startDate').value);
+            var newEndDate   = new Date(document.getElementById('endDate').value);
+            timeline.setVisibleChartRange(newStartDate, newEndDate);
+            timeline.redraw();
+        }
+
+		// adjust the value in input text fields according to visible frame range
+        function onrangechange() {
+            // adjust the values of startDate and endDate
+            var range = timeline.getVisibleChartRange();
+            document.getElementById('startDate').value = dateFormat(range.start);
+            document.getElementById('endDate').value   = dateFormat(range.end);
+        }
+
+        // Format given date as "yyyy-mm-dd hh:ii:ss"
+        // @param datetime   A Date object.
+        function dateFormat(date) {
+            var datetime = ((date.getMonth()   <  9) ? "0" : "") + (date.getMonth() + 1) + "/" +
+					((date.getDate()    < 10) ? "0" : "") +  date.getDate() + "/" +
+					date.getFullYear();
+                    //((date.getHours()   < 10) ? "0" : "") +  date.getHours() + ":" +
+                    //((date.getMinutes() < 10) ? "0" : "") +  date.getMinutes() + ":" +
+                    //((date.getSeconds() < 10) ? "0" : "") +  date.getSeconds();
+            return datetime;
+        }
+		
+    </script>
+</head>
+<body onresize="if (timeline) {timeline.redraw();}" onload="if (timeline) {timeline.redraw();}">
+	<p>
+		<label>Select File:</label>
+		<input type="file" id="eventinputfile" name="eventinputfile[]" multiple />
+		
+	</p>
+	<p>
+		Start Date: <input type="text" id="startDate" value="" placeholder="mm/dd/yyyy" >
+		End Date:   <input type="text" id="endDate" value="" placeholder="mm/dd/yyyy">
+		<input type="button" id="setStartDate" value="set" onclick="setTime();">
+	</p>
+	<div id="mytimeline"  onmousemove="onrangechange()" onwheel="onrangechange()"></div>
+	<p>
+		<b>Note:</b>
+		<i>Input file should be CSV with columns event-id, event-name, start-date, end-date, description, txtcolor, bkcolor strictly in order.
+		</br>
+		Empty txtcolor, bkcolor will set color to default settings.
+		Empty end-date will create single day event.
+		</i>
+	</p>
+</body>
+
+
+<script type="text/javascript">
+
+  function handleFileSelect(evt) {
+  
+    var files = evt.target.files; // FileList object  
+    // files is a FileList of File objects. List some properties.
+    var output = [];
+    for (var i = 0, f; f = files[i]; i++) {
+		if(!f.type.match('.*ms-excel')) {
+			continue;
+		}
+		var reader = new FileReader();
+		reader.readAsText(f);
+		reader.onload = loadHandler;
+		reader.onerror = errorHandler;
+		
+	}
+   
+  }
+  	
+	function CSVToArray( strData, strDelimiter ){
+        // Check to see if the delimiter is defined. If not,
+        // then default to comma.
+        strDelimiter = (strDelimiter || ",");
+
+        // Create a regular expression to parse the CSV values.
+        var objPattern = new RegExp(
+            (
+                // Delimiters.
+                "(\\" + strDelimiter + "|\\r?\\n|\\r|^)" +
+
+                // Quoted fields.
+                "(?:\"([^\"]*(?:\"\"[^\"]*)*)\"|" +
+
+                // Standard fields.
+                "([^\"\\" + strDelimiter + "\\r\\n]*))"
+            ),
+            "gi"
+            );
+
+
+        // Create an array to hold our data. Give the array
+        // a default empty first row.
+        var arrData = [[]];
+
+        // Create an array to hold our individual pattern
+        // matching groups.
+        var arrMatches = null;
+
+
+        // Keep looping over the regular expression matches
+        // until we can no longer find a match.
+		var colindex = 0;
+		var eventid = "", eventname = "", startDate = "", endDate = "", content = "", desc = "", imgpath = "", txtcolor = "", bkcolor = "";
+        // maxDate = "";
+		var lines = [], datearr = [];
+		while (arrMatches = objPattern.exec( strData )){
+			
+            // Get the delimiter that was found.
+            var strMatchedDelimiter = arrMatches[ 1 ];
+
+            // Check to see if the given delimiter has a length
+            // (is not the start of string) and if it matches
+            // field delimiter. If id does not, then we know
+            // that this delimiter is a row delimiter.
+            if (
+                strMatchedDelimiter.length &&
+                strMatchedDelimiter !== strDelimiter
+                ){
+			    // Now that we have our value string, let's add
+				// it to the data array.
+				lines.push( {'start': startDate, 'end' : endDate, 'content': content, 'txtcolor': txtcolor, 'bkcolor': bkcolor} );
+				colindex = 0;
+				eventid= "";
+				eventname = "";
+				startDate = "";
+				endDate = "";
+				content = "";
+				txtcolor = "";
+				bkcolor = "";
+				
+                // Since we have reached a new row of data,
+                // add an empty row to our data array.
+                arrData.push( [] );
+
+            }
+
+            var strMatchedValue;
+
+            // Now that we have our delimiter out of the way,
+            // let's check to see which kind of value we
+            // captured (quoted or unquoted).
+            if (arrMatches[ 2 ]){
+
+                // We found a quoted value. When we capture
+                // this value, unescape any double quotes.
+                strMatchedValue = arrMatches[ 2 ].replace(
+                    new RegExp( "\"\"", "g" ),
+                    "\""
+                    );
+
+            } else {
+
+                // We found a non-quoted value.
+                strMatchedValue = arrMatches[ 3 ];
+
+            }
+			//if(colindex == 0)
+			//	eventid = strMatchedValue;
+
+			if(colindex == 0)
+				eventname = strMatchedValue;
+			
+			if(colindex == 1 && strMatchedValue != "") {
+					startDate = new Date(strMatchedValue);
+					datearr.push(startDate);
+			}
+			
+			if(colindex == 2 && strMatchedValue != "") {
+					endDate = new Date(strMatchedValue);
+					datearr.push(endDate);
+			}
+			
+			if(colindex == 3 && strMatchedValue!="" ) {
+				desc = strMatchedValue;
+				content = '<div class="eventItem" desc="'+desc+'">'+eventname+'</div>';
+			}
+			
+			if(colindex == 4 && strMatchedValue!="" ) {
+				imgpath = "file:///"+strMatchedValue;
+			//	content = '<div onclick="showDetailBox(this,\''+desc+'\')"><div class="event-inner-span" ><img class="event-image" src="'+imgpath+'"/></div><div class="event-text" >'+eventname+'</div></div>';
+				content = '<div class="eventItem" desc="'+desc+'"><div class="event-inner-span" ><img class="event-image" src="'+imgpath+'"/></div><div class="event-text" >'+eventname+'</div></div>';
+
+			}
+			
+			if(colindex == 0)
+				content = '<div class="eventItem">'+eventname+'</div>';
+					
+			if(colindex == 5)
+				txtcolor = strMatchedValue;
+			if(colindex == 6)
+				bkcolor = strMatchedValue;
+
+			colindex++;
+            //arrData[ arrData.length - 1 ].push( strMatchedValue );
+        }
+
+        // Return the parsed data.
+        //return( arrData );
+		var maxDate = new Date(Math.max.apply(null, datearr));
+        var finalstartdate = new Date(maxDate.getTime() - 60*24*60*60*1000 );
+	    var finalenddate = new Date(maxDate.getTime() + 4*24*60*60*1000);
+		
+		drawVisualization(lines);
+		timeline.setVisibleChartRange(finalstartdate, finalenddate);
+        timeline.redraw();
+		
+		//Remove all image elements if empty
+		var allimg = document.getElementsByClassName("event-image");
+		for(var i = 0; i < allimg.length; i++) {
+			var imgsrc = $(allimg[i]).attr("src");
+			if( imgsrc == "" )
+				$(allimg[i]).parent().css("display","none");
+				
+		}
+
+    }
+
+	
+	function loadHandler(event) {
+		var csv = event.target.result;
+		//processData(csv);
+		CSVToArray( csv, "," )
+	}
+
+	function errorHandler(evt) {
+		if(evt.target.error.name == "NotReadableError") {
+          alert("Cannot read file !");
+		}
+	}
+  
+  
+	// Check for the various File API support.
+	if (window.File && window.FileReader && window.FileList && window.Blob) {
+		document.getElementById('eventinputfile').addEventListener('change', handleFileSelect, false);
+	} else {
+		alert('The File APIs are not fully supported in this browser.');
+	}
+
+	$(window).load( function() {
+		var w = $(window).width();
+		$('#mytimeline').css('width', w);
+		var timeline = document.getElementsByClassName('timeline-content');
+		//timeline.repaintFrame();
+	});
+
+	$.notify.addStyle('happyblue', {
+		html: "<div><span data-notify-text/></div>",
+		classes: {
+			base: {
+				"font-weight": "bold",
+				  "padding": "8px 15px 8px 14px",
+				  "text-shadow": "0 1px 0 rgba(255, 255, 255, 0.5)",
+				  "color": "#FFFFFF", 
+				  "background-color": "#7F7F7F",
+				  //"border": "1px solid #000000",
+				  "border-radius": "4px",
+				  "white-space": "nowrap",
+				  "padding-left": "25px",
+				  "background-repeat": "no-repeat",
+				  "background-position": "3px 7px",
+				"z-index": "1001"
+
+			
+			}
+		}
+	});
+	// Show description box when clicked on event box and if description exists
+	$(document).on('click', ".timeline-event", function(event) {
+		var eventitem = $(this).find('.eventItem')[0];
+		var desc = $(eventitem).attr('desc');
+		$(eventitem).notify(desc, {autoHide: false, style: 'happyblue'});
+		
+	});
+	
+	// Hide description box depending on click inside/outside box
+	$("#mytimeline").click( function(event) {
+		
+		var selnotify = $(event.target)[0].id;
+		var thisnotify = $(event.target)[0].previousSibling;
+		var allnotify = document.getElementsByClassName("notifyjs-wrapper notifyjs-hidable");
+		for(var i = 0; i < allnotify.length; i++) {
+			if( allnotify[i] != thisnotify )
+				$(allnotify[i]).trigger('notify-hide');
+		}
+	});
+
+	</script>
+</html>
